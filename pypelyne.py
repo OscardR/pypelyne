@@ -3,6 +3,7 @@
 
 import re
 import sys
+from log import Log
 
 # Codificación operaciones (no usado)
 NOOP = 0x00
@@ -11,9 +12,16 @@ SUB = 0x02
 MULT = 0x04
 TRAP = 0x08
 
+# Inicializar logger
+l = Log("Pypelyne")
+
 class Trap(Exception):
-	def __init__(self):
-		Exception.__init__(self)
+	def __init__(self, msg):
+		Exception.__init__(self, msg)
+
+class EndOfProgram(Exception):
+	def __init__(self, msg):
+		Exception.__init__(self, msg)
 
 class Programmer:
 	def __init__(self, memory):
@@ -24,7 +32,7 @@ class Programmer:
 			op, rc, ra, rb = re.split(',? ', instruction_line.strip())
 		except ValueError:
 			op, rc, ra, rb = instruction_line.strip(), None, None, None
-		print "Insert: ", op, rc, ra, rb
+		l.d("Insert: {op} {rc} {ra} {rb}".format(**locals()), "Programmer")
 		self.memory.insert_instruction(Instruction(op, ra, rb, rc))
 
 class InstructionsMemory:
@@ -35,7 +43,10 @@ class InstructionsMemory:
 		self.instructions.append(instruction)
 
 	def get_instruction_at(self, pc):
-		return self.instructions[pc]
+		try:
+			return self.instructions[pc]
+		except IndexError:
+			raise EndOfProgram("No more instructions.")
 
 class Registers:
 	def __init__(self):
@@ -52,9 +63,11 @@ class Registers:
 			"r8" : 0 }
 
 	def read_register(self, name):
+		l.d("Read: {}".format(name), "Registers")
 		return self.registers[name]
 
 	def write_register(self, name, value):
+		l.d("Write: {}".format(name), "Registers")
 		self.registers[name] = value
 
 	def __str__(self):
@@ -91,7 +104,7 @@ class Instruction:
 class Stage:
 	def __init__(self, name, prev_reg, next_reg):
 		self.name = name
-		print "Stage %s initialized!" % name
+		l.v("Stage %s initialized!" % name, "Stage")
 		self.prev_reg = prev_reg
 		self.next_reg = next_reg
 
@@ -114,10 +127,12 @@ class IF(Stage):
 
 	def prepare(self):
 		self.pc = self.prev_reg["PC"]
+		l.e("PC: %d" % self.pc, "IF/prepare")
 		self.instruction = self.prev_reg["IM"].get_instruction_at(self.pc)
 
 	def execute(self):
 		self.prev_reg["PC"] += 1
+		l.e("prev_reg.PC: %d" % self.prev_reg["PC"], "IF/execute")
 
 	def finalize(self):
 		self.next_reg["PC"] = self.pc
@@ -179,7 +194,7 @@ class EX(Stage):
 		elif self.codop == "mult":
 			self.C = self.A * self.B
 		elif self.codop == "trap":
-			raise Trap()
+			raise Trap("TRAP")
 		else:
 			pass
 
@@ -264,31 +279,40 @@ class CPU:
 		self.dec_reg = [initial, if_id, id_ex, ex_mem, mem_wb, final]
 		
 		# Programar
+		l.v("Program!", "CPU")
 		if program_file != None:
 			self.programmer = Programmer(self.instructions_memory)
-			for l in open(program_file):
-				self.programmer.insert_instruction(l)
+			for line in open(program_file):
+				self.programmer.insert_instruction(line)
 
 	def run(self):
 		'''
 		Ejecutar el programa en memoria de instrucciones
 		'''
-		print "RUN"
+		l.v("Run!", "CPU");
 		# Ejecución
 		trap = False
+		ciclo = 1
 		while not trap:
-			for stage in self.stages:
+			l.c("Ciclo %d" % ciclo, 'RED', "CPU")
+			for stage in reversed(self.stages):
 				try:
 					stage.prepare()
 					stage.execute()
 					stage.finalize()
 				except NotImplementedError as nie:
-					print nie
+					l.e(nie, "CPU")
 				except Trap:
 					trap = True
-		print "TRAP"
+				except EndOfProgram:
+					l.d("No more instructions", "CPU")
+					continue
+			ciclo += 1
+		l.e("TRAP instruction found", "CPU")
 
 if __name__ == '__main__':
+
+	#l.disable()
 
 	program_file = 'program.asm'
 
@@ -304,4 +328,4 @@ if __name__ == '__main__':
 	print cpu.registers
 	print cpu.memory
 
-	print "END"
+	l.v("End!", "Main");
