@@ -3,6 +3,7 @@
 
 import re
 import sys
+import log
 from log import Log
 
 # Codificación operaciones (no usado)
@@ -51,7 +52,6 @@ class InstructionsMemory:
 class Registers:
 	def __init__(self):
 		self.registers = {
-			None : None,
 			"r0" : 1,
 			"r1" : 0,
 			"r2" : 0,
@@ -64,16 +64,20 @@ class Registers:
 
 	def read_register(self, name):
 		l.d("Read: {}".format(name), "Registers")
-		return self.registers[name]
+		try:
+			return self.registers[name]
+		except KeyError:
+			return None
 
 	def write_register(self, name, value):
 		l.d("Write: {}".format(name), "Registers")
-		self.registers[name] = value
+		if name in self.registers.keys():
+			self.registers[name] = value
 
 	def __str__(self):
-		out = "Registers:\n"
+		out = "{}Registers:{}\n".format(log.RED_BOLD, log.NORMAL)
 		for i, r in enumerate(self.registers.keys()):
-			out += "[{:>3} = {:>4} ]\t".format(r, self.registers[r])
+			out += "[{:>3} = {:>4} ] ".format(r, self.registers[r])
 			if i % 3 == 2: out += "\n"
 		return out
 
@@ -88,7 +92,7 @@ class Memory:
 		self.memory[index] = data
 
 	def __str__(self):
-		out = "Memory:\n"
+		out = "{}Memory:{}\n".format(log.RED_BOLD, log.NORMAL)
 		for i, w in enumerate(self.memory):
 			out += "[ {:#04x} ] ".format(w)
 			if i % 8 == 7: out += "\n"
@@ -127,11 +131,11 @@ class IF(Stage):
 
 	def prepare(self):
 		self.pc = self.prev_reg["PC"]
+		self.prev_reg["PC"] += 1
 		l.e("PC: %d" % self.pc, "IF/prepare")
 		self.instruction = self.prev_reg["IM"].get_instruction_at(self.pc)
 
 	def execute(self):
-		self.prev_reg["PC"] += 1
 		l.e("prev_reg.PC: %d" % self.prev_reg["PC"], "IF/execute")
 
 	def finalize(self):
@@ -294,7 +298,7 @@ class CPU:
 		trap = False
 		ciclo = 1
 		while not trap:
-			l.c("Ciclo %d" % ciclo, 'RED', "CPU")
+			l.c("Ciclo %d" % ciclo, 'YELLOW_BOLD', "CPU")
 			for stage in reversed(self.stages):
 				try:
 					stage.prepare()
